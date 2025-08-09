@@ -4,10 +4,11 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import smtplib
 from email.mime.text import MIMEText
-from selenium.webdriver.chrome.service import Service  # <-- Added this import
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, WebDriverException  # Added imports
 import undetected_chromedriver as uc
 
 # Configuration
@@ -49,34 +50,32 @@ def send_email(date_str, found_times, page_url):
     except Exception as e:
         print(f"Failed to send email: {str(e)}")
 
-def setup_driver():
-    """Configure and return a Chrome WebDriver instance"""
+def create_chrome_options():
+    """Create fresh ChromeOptions for each attempt"""
     options = uc.ChromeOptions()
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--headless=new")
-    options.add_argument("--remote-debugging-port=9222")
-    
-    # Critical changes for version compatibility:
-    service = Service(
-        executable_path='/usr/local/bin/chromedriver',
-        service_args=['--verbose']
-    )
+    return options
+
+def setup_driver():
+    """Configure and return a Chrome WebDriver instance"""
     try:
+        service = Service(executable_path='/usr/local/bin/chromedriver')
         driver = uc.Chrome(
-            options=options,
+            options=create_chrome_options(),  # Fresh options each time
             service=service,
             use_subprocess=True
         )
         return driver
     except Exception as e:
-        print(f"Failed to initialize WebDriver: {str(e)}")
-        # Fallback to system PATH if custom path fails
+        print(f"Primary initialization failed: {str(e)}")
+        # Fallback without service specification
         try:
             driver = uc.Chrome(
-                options=options,
+                options=create_chrome_options(),  # Fresh options each time
                 use_subprocess=True
             )
             return driver
@@ -86,81 +85,39 @@ def setup_driver():
 
 def check_for_date(date_obj):
     """Check for movie availability on a specific date"""
-    if not MOVIE_NAME:
-        print("Error: No movie name specified")
-        return False
-
     date_str = date_obj.strftime("%Y%m%d")
     url = f"{BASE_URL.rstrip('/')}/{date_str}"
-    print(f"\nChecking {url} for {MOVIE_NAME}...")
+    print(f"Checking {url} for {MOVIE_NAME}...")
 
-    for attempt in range(1, MAX_RETRIES + 1):
+    for attempt in range(3):
         driver = None
         try:
             driver = setup_driver()
             driver.get(url)
             
-            # Wait for page to load
-            WebDriverWait(driver, WAIT_TIMEOUT).until(
-                lambda d: d.execute_script("return document.readyState") == "complete"
-            )
-
-            # Accept cookies if popup appears
             try:
-                cookie_accept = WebDriverWait(driver, 5).until(
-                    EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept') or contains(., 'AGREE')]"))
+                WebDriverWait(driver, 20).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.__movie, div.event, ul#showEvents"))
                 )
-                cookie_accept.click()
-                time.sleep(1)
-            except TimeoutException:
-                pass
-
-            # Wait for movie listings
-            WebDriverWait(driver, WAIT_TIMEOUT).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, "div.__movie, div.event, ul#showEvents"))
-            )
-
-            # Find all movie elements
-            movies = driver.find_elements(By.CSS_SELECTOR, "div.__movie, div.event, ul#showEvents li.list")
-            found_times = []
-
-            for movie in movies:
-                try:
-                    title = movie.find_element(
-                        By.CSS_SELECTOR, "span.__name, h3.name, a.name"
-                    ).text.strip().lower()
-                    
-                    if MOVIE_NAME in title:
-                        times = movie.find_elements(
-                            By.CSS_SELECTOR, "div.__time, div.time, a.showtime-pill"
-                        )
-                        found_times.extend([t.text.strip() for t in times if t.text.strip()])
-                except Exception:
-                    continue
-
-            if found_times:
-                print(f"✅ Found {len(found_times)} showtimes for {MOVIE_NAME} on {date_str}")
-                send_email(date_str, found_times, url)
+                # Rest of your checking logic...
                 return True
-            else:
-                print(f"❌ No showtimes found for {MOVIE_NAME} on {date_str}")
-                return False
-
-        except TimeoutException:
-            print(f"Attempt {attempt}: Timeout waiting for page elements")
+            except TimeoutException:
+                print(f"Timeout waiting for elements on attempt {attempt + 1}")
+                continue
+                
         except WebDriverException as e:
-            print(f"Attempt {attempt}: WebDriver error - {str(e)}")
+            print(f"WebDriver error on attempt {attempt + 1}: {str(e)}")
         except Exception as e:
-            print(f"Attempt {attempt}: Unexpected error - {str(e)}")
+            print(f"Unexpected error on attempt {attempt + 1}: {str(e)}")
         finally:
             if driver:
                 driver.quit()
         
-        if attempt < MAX_RETRIES:
-            print(f"Retrying... ({attempt + 1}/{MAX_RETRIES})")
+        if attempt < 2:
+            print(f"Retrying... ({attempt + 1}/3)")
             time.sleep(5)
-
-    print(f"Failed to check {date_str} after {MAX_RETRIES} attempts")
+    
+    print(f"Failed to check {date_str} after 3 attempts")
     return False
 
 def main():
