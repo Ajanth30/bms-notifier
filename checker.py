@@ -56,15 +56,15 @@ def setup_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--disable-gpu")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    
-    # Headless mode with user agent
     options.add_argument("--headless=new")
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    options.add_argument("--remote-debugging-port=9222")
     
+    # Critical changes for version compatibility:
     driver = uc.Chrome(
         options=options,
-        version_main=114  # Specify a Chrome version known to work
+        version_main=None,  # Let undetected-chromedriver auto-detect
+        driver_executable_path="/usr/local/bin/chromedriver",
+        use_subprocess=True
     )
     return driver
 
