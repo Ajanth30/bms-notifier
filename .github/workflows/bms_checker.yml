@@ -11,50 +11,51 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Chrome dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y wget unzip fonts-liberation libappindicator3-1 libatk-bridge2.0-0 libcups2 \
-            libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
+          sudo apt-get install -y wget unzip jq fonts-liberation libappindicator3-1 \
+            libatk-bridge2.0-0 libcups2 libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 \
+            libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
 
-      - name: Install Google Chrome Stable
+      - name: Install Google Chrome
         run: |
-          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
-          sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list'
+          wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg
+          echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" | sudo tee /etc/apt/sources.list.d/google-chrome.list
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
 
       - name: Setup ChromeDriver
         run: |
-          # Get Chrome version and extract major version number
+          # Get Chrome version
           CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
-          CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
           echo "Detected Chrome version: $CHROME_VERSION"
-          echo "Using Chrome major version: $CHROME_MAJOR"
 
-          # Try to get matching ChromeDriver version
-          echo "Fetching ChromeDriver version..."
-          CHROMEDRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR")
+          # Get matching ChromeDriver version from new endpoint
+          echo "Fetching compatible ChromeDriver version..."
+          VERSION_DATA=$(curl -sS "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json")
+          CHROMEDRIVER_VERSION=$(echo "$VERSION_DATA" | jq -r '.channels.Stable.version')
           
-          # Verify version was obtained
           if [ -z "$CHROMEDRIVER_VERSION" ]; then
-            echo "Failed to get ChromeDriver version"
+            echo "Error: Could not determine ChromeDriver version"
             exit 1
           fi
           
           echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
           
-          # Download and install ChromeDriver
+          # Download and install
           echo "Downloading ChromeDriver..."
-          wget -nv --show-progress -N https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
+          DOWNLOAD_URL=$(echo "$VERSION_DATA" | jq -r '.channels.Stable.downloads.chromedriver[] | select(.platform == "linux64") | .url')
+          wget -nv --show-progress -N "$DOWNLOAD_URL" -O chromedriver.zip
           
           echo "Installing ChromeDriver..."
-          unzip -o chromedriver_linux64.zip
-          sudo mv -f chromedriver /usr/local/bin/chromedriver
+          unzip -o chromedriver.zip -d chromedriver-temp
+          sudo mv -f chromedriver-temp/chromedriver-linux64/chromedriver /usr/local/bin/
           sudo chmod +x /usr/local/bin/chromedriver
+          rm -rf chromedriver.zip chromedriver-temp
           
-          # Verify installation
-          echo "ChromeDriver version: $(chromedriver --version)"
+          echo "Verifying installation..."
+          chromedriver --version
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -64,7 +65,12 @@ jobs:
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install -r requirements.txt
+          if [ -f requirements.txt ]; then
+            pip install -r requirements.txt
+          else
+            echo "No requirements.txt found, installing default packages"
+            pip install selenium python-dotenv beautifulsoup4
+          fi
 
       - name: Run checker
         env:
@@ -74,7 +80,9 @@ jobs:
           MOVIE_NAME: ${{ secrets.MOVIE_NAME }}
           BASE_URL: ${{ secrets.BASE_URL }}
           TIMEZONE: "Asia/Colombo"
+          SMTP_SERVER: "smtp.gmail.com"
+          SMTP_PORT: "587"
         run: |
-          echo "Starting movie check..."
-          python checker.py
-          echo "Check completed"
+          echo "Starting movie check at $(date)"
+          python checker.py || echo "Checker script failed"
+          echo "Check completed at $(date)"
