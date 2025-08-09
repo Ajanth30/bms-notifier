@@ -62,27 +62,24 @@ def create_chrome_options():
 
 def setup_driver():
     """Configure and return a Chrome WebDriver instance"""
-    try:
-        service = Service(executable_path='/usr/local/bin/chromedriver')
-        driver = uc.Chrome(
-            options=create_chrome_options(),  # Fresh options each time
-            service=service,
-            version_main=139,
-            use_subprocess=True
-        )
-        return driver
-    except Exception as e:
-        print(f"Primary initialization failed: {str(e)}")
-        # Fallback without service specification
-        try:
-            driver = uc.Chrome(
-                options=create_chrome_options(),  # Fresh options each time
-                use_subprocess=True
-            )
-            return driver
-        except Exception as fallback_error:
-            print(f"Fallback initialization failed: {str(fallback_error)}")
-            raise
+    options = uc.ChromeOptions()
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--disable-gpu")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--headless=new")
+    
+    # Get current Chrome version
+    chrome_version = os.popen('google-chrome --version').read().strip().split()[-1]
+    major_version = chrome_version.split('.')[0]
+    
+    driver = uc.Chrome(
+        options=options,
+        version_main=int(major_version),  # Auto-detect major version
+        driver_executable_path='/usr/local/bin/chromedriver',
+        use_subprocess=True
+    )
+    return driver
 
 def check_for_date(date_obj):
     """Check for movie availability on a specific date"""
