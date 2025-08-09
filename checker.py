@@ -1,137 +1,92 @@
-import os
-import time
+import requests
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
-from zoneinfo import ZoneInfo
 import smtplib
 from email.mime.text import MIMEText
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException  # Added imports
-import undetected_chromedriver as uc
+import os
 
-# Configuration
-BASE_URL = os.environ.get("BASE_URL","https://lk.bookmyshow.com/sri-lanka/cinemas/regal-cinema-jaffna/MCJA/")
-MOVIE_NAME = os.environ.get("MOVIE_NAME", "").strip().lower()
-EMAIL_FROM = os.environ["EMAIL_FROM"]
-EMAIL_TO = os.environ.get("EMAIL_TO", EMAIL_FROM)
-EMAIL_PASS = os.environ["EMAIL_PASS"]
-TIMEZONE = os.environ.get("TIMEZONE", "Asia/Colombo")
-SMTP_SERVER = os.environ.get("SMTP_SERVER", "smtp.gmail.com")
-SMTP_PORT = int(os.environ.get("SMTP_PORT", "587"))
-MAX_RETRIES = 3
-WAIT_TIMEOUT = 20
+def get_showtimes(date):
+    url = f"https://lk.bookmyshow.com/sri-lanka/cinemas/regal-cinema-jaffna/MCJA/{date.strftime('%Y%m%d')}"
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+        'Connection': 'keep-alive'
+    }
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+        soup = BeautifulSoup(response.text, 'html.parser')
+        showtimes_section = soup.find('section', class_='showtimes')
+        if not showtimes_section:
+            return []
+        
+        movies = []
+        for item in showtimes_section.find_all('li', class_='list'):
+            movie_name = item.find('span', class_='__name').text.strip()
+            times = [a.text.strip() for a in item.find_all('a', class_='data-enabled time_vrcenter')]
+            movies.append({'name': movie_name, 'times': times})
+        return movies
+    except requests.RequestException as e:
+        print(f"Error fetching data for {date}: {e}")
+        return []
 
-def send_email(date_str, found_times, page_url):
-    """Send notification email about available showtimes"""
-    subject = f"🎬 Booking Alert: {MOVIE_NAME.title()} on {date_str}"
-    body = (f"Movie: {MOVIE_NAME.title()}\n"
-            f"Date: {date_str}\n"
-            f"Showtimes: {', '.join(found_times)}\n\n"
-            f"Book now: {page_url}")
+def send_email(subject, body):
+    sender = os.environ.get('EMAIL_FROM')
+    password = os.environ.get('EMAIL_PASS')
+    receiver = os.environ.get('EMAIL_TO')
     
+    if not all([sender, password, receiver]):
+        print("Email credentials not set")
+        return
+
     msg = MIMEText(body)
-    msg["Subject"] = subject
-    msg["From"] = EMAIL_FROM
-    msg["To"] = EMAIL_TO
+    msg['Subject'] = subject
+    msg['From'] = sender
+    msg['To'] = receiver
 
     try:
-        if SMTP_PORT == 465:
-            with smtplib.SMTP_SSL(SMTP_SERVER, SMTP_PORT, timeout=30) as server:
-                server.login(EMAIL_FROM, EMAIL_PASS)
-                server.sendmail(EMAIL_FROM, [EMAIL_TO], msg.as_string())
-        else:
-            with smtplib.SMTP(SMTP_SERVER, SMTP_PORT, timeout=30) as server:
-                server.starttls()
-                server.login(EMAIL_FROM, EMAIL_PASS)
-                server.sendmail(EMAIL_FROM, [EMAIL_TO], msg.as_string())
-        print(f"Email sent successfully for {date_str}")
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(sender, password)
+            server.send_message(msg)
+        print("Email sent successfully")
     except Exception as e:
-        print(f"Failed to send email: {str(e)}")
-
-def create_chrome_options():
-    """Create fresh ChromeOptions for each attempt"""
-    options = uc.ChromeOptions()
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--headless=new")
-    return options
-
-def setup_driver():
-    """Configure and return a Chrome WebDriver instance"""
-    options = uc.ChromeOptions()
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
-    options.add_argument("--disable-gpu")
-    options.add_argument("--window-size=1920,1080")
-    options.add_argument("--headless=new")
-    
-    # Get installed Chrome version
-    chrome_version = os.popen('google-chrome --version').read().strip().split()[-1]
-    major_version = chrome_version.split('.')[0]
-    
-    driver = uc.Chrome(
-        options=options,
-        version_main=int(major_version),
-        driver_executable_path='/usr/local/bin/chromedriver',
-        use_subprocess=True
-    )
-    return driver
-
-def check_for_date(date_obj):
-    """Check for movie availability on a specific date"""
-    date_str = date_obj.strftime("%Y%m%d")
-    url = f"{BASE_URL.rstrip('/')}/{date_str}"
-    print(f"Checking {url} for {MOVIE_NAME}...")
-
-    for attempt in range(3):
-        driver = None
-        try:
-            driver = setup_driver()
-            driver.get(url)
-            
-            try:
-                WebDriverWait(driver, 20).until(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.__movie, div.event, ul#showEvents"))
-                )
-                # Rest of your checking logic...
-                return True
-            except TimeoutException:
-                print(f"Timeout waiting for elements on attempt {attempt + 1}")
-                continue
-                
-        except WebDriverException as e:
-            print(f"WebDriver error on attempt {attempt + 1}: {str(e)}")
-        except Exception as e:
-            print(f"Unexpected error on attempt {attempt + 1}: {str(e)}")
-        finally:
-            if driver:
-                driver.quit()
-        
-        if attempt < 2:
-            print(f"Retrying... ({attempt + 1}/3)")
-            time.sleep(5)
-    
-    print(f"Failed to check {date_str} after 3 attempts")
-    return False
+        print(f"Error sending email: {e}")
 
 def main():
-    """Main function to check for today and tomorrow"""
-    now_local = datetime.now(ZoneInfo(TIMEZONE))
-    print(f"\n{'-'*40}")
-    print(f"Starting check at {now_local.strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"Movie: {MOVIE_NAME.title() if MOVIE_NAME else 'NOT SPECIFIED'}")
-    print(f"Base URL: {BASE_URL}")
-    print(f"{'-'*40}\n")
+    target_movie = os.environ.get('MOVIE_NAME', '').strip()
+    if not target_movie:
+        print("No target movie specified")
+        return
 
-    today = now_local.date()
+    today = datetime.now()
     tomorrow = today + timedelta(days=1)
+    
+    today_showtimes = get_showtimes(today)
+    tomorrow_showtimes = get_showtimes(tomorrow)
+    
+    email_body = ""
+    found = False
 
-    check_for_date(today)
-    check_for_date(tomorrow)
+    for movie in today_showtimes:
+        if movie['name'].lower() == target_movie.lower():
+            found = True
+            email_body += f"{movie['name']} on {today.strftime('%Y-%m-%d')}:\n"
+            email_body += f"  Times: {', '.join(movie['times'])}\n\n"
+    
+    for movie in tomorrow_showtimes:
+        if movie['name'].lower() == target_movie.lower():
+            found = True
+            email_body += f"{movie['name']} on {tomorrow.strftime('%Y-%m-%d')}:\n"
+            email_body += f"  Times: {', '.join(movie['times'])}\n\n"
+    
+    if found:
+        send_email(
+            f"Showtimes for {target_movie} on {today.strftime('%Y-%m-%d')} and {tomorrow.strftime('%Y-%m-%d')}",
+            email_body
+        )
+    else:
+        print(f"Movie '{target_movie}' not found in showtimes")
 
 if __name__ == "__main__":
     main()
