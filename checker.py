@@ -4,11 +4,11 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 import smtplib
 from email.mime.text import MIMEText
-import undetected_chromedriver as uc
+from selenium.webdriver.chrome.service import Service  # <-- Added this import
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import TimeoutException, WebDriverException
+import undetected_chromedriver as uc
 
 # Configuration
 BASE_URL = os.environ.get("BASE_URL","https://lk.bookmyshow.com/sri-lanka/cinemas/regal-cinema-jaffna/MCJA/")
