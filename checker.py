@@ -67,6 +67,7 @@ def setup_driver():
         driver = uc.Chrome(
             options=create_chrome_options(),  # Fresh options each time
             service=service,
+            version_main=139,
             use_subprocess=True
         )
         return driver
