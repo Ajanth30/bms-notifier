@@ -16,18 +16,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y wget unzip fonts-liberation libappindicator3-1 libatk-bridge2.0-0 libcups2 \
             libdbus-1-3 libdrm2 libgbm1 libnspr4 libnss3 libx11-xcb1 libxcomposite1 libxdamage1 libxrandr2 xdg-utils
-        
-      - name: Setup ChromeDriver
-        run: |
-         CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+\.\d+')
-         CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-         CHROMEDRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR")
-         wget -N https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
-         unzip chromedriver_linux64.zip
-         sudo mv -f chromedriver /usr/local/bin/chromedriver
-         sudo chmod +x /usr/local/bin/chromedriver
-
-
 
       - name: Install Google Chrome Stable
         run: |
@@ -35,6 +23,18 @@ jobs:
           sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list'
           sudo apt-get update
           sudo apt-get install -y google-chrome-stable
+
+      - name: Setup ChromeDriver
+        run: |
+          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+          CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
+          echo "Detected Chrome major version: $CHROME_MAJOR"
+          CHROMEDRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR")
+          echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
+          wget -N https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
+          unzip -o chromedriver_linux64.zip
+          sudo mv -f chromedriver /usr/local/bin/chromedriver
+          sudo chmod +x /usr/local/bin/chromedriver
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -53,4 +53,5 @@ jobs:
           BASE_URL: ${{ secrets.BASE_URL }}
           TIMEZONE: "Asia/Colombo"
         run: python checker.py
+
 
