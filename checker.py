@@ -69,13 +69,13 @@ def setup_driver():
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--headless=new")
     
-    # Get current Chrome version
+    # Auto-detect Chrome version
     chrome_version = os.popen('google-chrome --version').read().strip().split()[-1]
     major_version = chrome_version.split('.')[0]
     
     driver = uc.Chrome(
         options=options,
-        version_main=int(major_version),  # Auto-detect major version
+        version_main=int(major_version),
         driver_executable_path='/usr/local/bin/chromedriver',
         use_subprocess=True
     )
