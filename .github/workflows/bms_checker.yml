@@ -23,6 +23,7 @@ jobs:
         with:
           chrome-version: 'latest'  # Gets the latest stable version
           chromedriver: true       # Auto-installs matching ChromeDriver
+          chromedriver-path: '/usr/local/bin/chromedriver'  # Explicit path
 
       - name: Verify installations
         run: |

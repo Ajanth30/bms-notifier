@@ -60,13 +60,29 @@ def setup_driver():
     options.add_argument("--remote-debugging-port=9222")
     
     # Critical changes for version compatibility:
-    driver = uc.Chrome(
-        options=options,
-        version_main=None,  # Let undetected-chromedriver auto-detect
-        driver_executable_path="/usr/local/bin/chromedriver",
-        use_subprocess=True
+    service = Service(
+        executable_path='/usr/local/bin/chromedriver',
+        service_args=['--verbose']
     )
-    return driver
+    try:
+        driver = uc.Chrome(
+            options=options,
+            service=service,
+            use_subprocess=True
+        )
+        return driver
+    except Exception as e:
+        print(f"Failed to initialize WebDriver: {str(e)}")
+        # Fallback to system PATH if custom path fails
+        try:
+            driver = uc.Chrome(
+                options=options,
+                use_subprocess=True
+            )
+            return driver
+        except Exception as fallback_error:
+            print(f"Fallback initialization failed: {str(fallback_error)}")
+            raise
 
 def check_for_date(date_obj):
     """Check for movie availability on a specific date"""
