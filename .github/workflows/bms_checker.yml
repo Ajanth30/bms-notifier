@@ -26,15 +26,35 @@ jobs:
 
       - name: Setup ChromeDriver
         run: |
-          CHROME_VERSION=$(google-chrome --version | grep -oP '\d+\.\d+\.\d+')
+          # Get Chrome version and extract major version number
+          CHROME_VERSION=$(google-chrome --version | awk '{print $3}')
           CHROME_MAJOR=$(echo $CHROME_VERSION | cut -d '.' -f 1)
-          echo "Detected Chrome major version: $CHROME_MAJOR"
+          echo "Detected Chrome version: $CHROME_VERSION"
+          echo "Using Chrome major version: $CHROME_MAJOR"
+
+          # Try to get matching ChromeDriver version
+          echo "Fetching ChromeDriver version..."
           CHROMEDRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR")
+          
+          # Verify version was obtained
+          if [ -z "$CHROMEDRIVER_VERSION" ]; then
+            echo "Failed to get ChromeDriver version"
+            exit 1
+          fi
+          
           echo "Using ChromeDriver version: $CHROMEDRIVER_VERSION"
-          wget -N https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
+          
+          # Download and install ChromeDriver
+          echo "Downloading ChromeDriver..."
+          wget -nv --show-progress -N https://chromedriver.storage.googleapis.com/${CHROMEDRIVER_VERSION}/chromedriver_linux64.zip
+          
+          echo "Installing ChromeDriver..."
           unzip -o chromedriver_linux64.zip
           sudo mv -f chromedriver /usr/local/bin/chromedriver
           sudo chmod +x /usr/local/bin/chromedriver
+          
+          # Verify installation
+          echo "ChromeDriver version: $(chromedriver --version)"
 
       - name: Setup Python
         uses: actions/setup-python@v4
@@ -42,7 +62,9 @@ jobs:
           python-version: "3.10"
 
       - name: Install Python dependencies
-        run: pip install -r requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
 
       - name: Run checker
         env:
@@ -52,6 +74,7 @@ jobs:
           MOVIE_NAME: ${{ secrets.MOVIE_NAME }}
           BASE_URL: ${{ secrets.BASE_URL }}
           TIMEZONE: "Asia/Colombo"
-        run: python checker.py
-
-
+        run: |
+          echo "Starting movie check..."
+          python checker.py
+          echo "Check completed"
