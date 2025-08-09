@@ -69,7 +69,7 @@ def setup_driver():
     options.add_argument("--window-size=1920,1080")
     options.add_argument("--headless=new")
     
-    # Auto-detect Chrome version
+    # Get installed Chrome version
     chrome_version = os.popen('google-chrome --version').read().strip().split()[-1]
     major_version = chrome_version.split('.')[0]
     
